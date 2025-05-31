@@ -1,313 +1,234 @@
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.label import Label
-from ace_framework import (
-    ACELayer, Message, NorthboundBus, SouthboundBus,
-    AspirationalLayer, GlobalStrategyLayer, AgentModelLayer, ExecutiveFunctionLayer,
-    CognitiveControlLayer, TaskProsecutionLayer
+
+# Comment out old ACE framework imports
+# from ace_framework import (
+#     ACELayer, Message as OldMessage, NorthboundBus as OldNorthboundBus, SouthboundBus as OldSouthboundBus,
+#     AspirationalLayer, GlobalStrategyLayer, AgentModelLayer, ExecutiveFunctionLayer,
+#     CognitiveControlLayer, TaskProsecutionLayer
+# )
+
+# Import new agent system classes
+from agent_system import (
+    Message, Bus, BusSystem, AgentBot, LayerManager, TurnScheduler,
+    L1_LLMSupervisorBot,
+    L2_LLMStrategyBot, L3_LLMAgentModelBot, L4_LLMExecutiveBot, L5_LLMCognitiveControlBot,
+    L6_LLMOutputBot # Ensure this matches the new class name in agent_system.py
 )
+from llm_interface import LLMInterface
+from kivy.clock import Clock
+from kivy.utils import escape_markup
 
-class Bot:
-    def __init__(self, name: str):
-        self.name = name
-
-        # Buses between Layer 1 (Aspirational) and Layer 2 (Global Strategy)
-        self.northbound_bus_L1_L2 = NorthboundBus()
-        self.southbound_bus_L1_L2 = SouthboundBus()
-
-        # Buses between Layer 2 (Global Strategy) and Layer 3 (Agent Model)
-        self.northbound_bus_L2_L3 = NorthboundBus()
-        self.southbound_bus_L2_L3 = SouthboundBus()
-
-        # Initialize Layer 1: Aspirational Layer
-        self.aspirational_layer = AspirationalLayer(
-            northbound_bus=self.northbound_bus_L1_L2, # Receives from Layer 2
-            southbound_bus=self.southbound_bus_L1_L2  # Sends to Layer 2
-        )
-
-        # Initialize Layer 2: Global Strategy Layer
-        self.strategy_layer = GlobalStrategyLayer(
-            northbound_bus=self.southbound_bus_L1_L2,  # Receives from Layer 1 (L1 Southbound is L2 Northbound)
-            southbound_bus=self.northbound_bus_L1_L2   # Sends to Layer 1 (L1 Northbound is L2 Southbound for acks)
-                                                       # This seems wrong, L2 southbound should be to L3.
-                                                       # Correcting:
-                                                       # Northbound for L2 is where L1 sends messages.
-                                                       # Southbound for L2 is where L2 sends messages to L3.
-        )
-        # Re-evaluating bus connections for L2:
-        # L2 (Strategy) receives goals from L1's southbound_bus_L1_L2.
-        # L2 (Strategy) sends strategic objectives to L3 via its own southbound_bus_L2_L3.
-        # L2 (Strategy) sends acknowledgements/status to L1 via L1's northbound_bus_L1_L2.
-
-        self.strategy_layer = GlobalStrategyLayer(
-            northbound_bus=self.southbound_bus_L1_L2, # Correct: L2's northbound IS L1's southbound
-            southbound_bus=self.southbound_bus_L2_L3  # Correct: L2's southbound goes to L3
-        )
-        # And L1 needs to receive acks on its northbound from L2.
-        # So L2 needs to be able to send to L1's northbound.
-        # This means L1's northbound_bus (self.northbound_bus_L1_L2) is where L2 sends its northbound messages.
-        # And L2's northbound_bus for its ACELayer init is where it receives from L1.
-
-        # Let's simplify and be explicit with bus naming for clarity in ACELayer init
-        # Bus for L1 to send to L2: L1_south_L2_north_bus
-        # Bus for L2 to send to L1: L2_south_L1_north_bus (for acks, status)
-        # Bus for L2 to send to L3: L2_south_L3_north_bus
-        # Bus for L3 to send to L2: L3_south_L2_north_bus
-
-        # L1 <-> L2 Buses
-        self.L1_output_to_L2_input_bus = SouthboundBus()
-        self.L2_output_to_L1_input_bus = NorthboundBus()
-        # L2 <-> L3 Buses
-        self.L2_output_to_L3_input_bus = SouthboundBus()
-        self.L3_output_to_L2_input_bus = NorthboundBus()
-        # L3 <-> L4 Buses
-        self.L3_output_to_L4_input_bus = SouthboundBus()
-        self.L4_output_to_L3_input_bus = NorthboundBus()
-        # L4 <-> L5 Buses
-        self.L4_output_to_L5_input_bus = SouthboundBus()
-        self.L5_output_to_L4_input_bus = NorthboundBus()
-        # L5 <-> L6 Buses
-        self.L5_output_to_L6_input_bus = SouthboundBus()
-        self.L6_output_to_L5_input_bus = NorthboundBus()
-        # L6 -> Environment Bus
-        self.L6_to_Environment_bus = SouthboundBus()
-
-        # Layer Initializations
-        self.aspirational_layer = AspirationalLayer(
-            northbound_bus=self.L2_output_to_L1_input_bus,
-            southbound_bus=self.L1_output_to_L2_input_bus,
-            layer_name=f"{name}-L1-Aspirational"
-        )
-        self.strategy_layer = GlobalStrategyLayer(
-            northbound_bus=self.L2_output_to_L1_input_bus,
-            southbound_bus=self.L2_output_to_L3_input_bus,
-            layer_name=f"{name}-L2-Strategy"
-        )
-        self.agent_model_layer = AgentModelLayer(
-            northbound_bus=self.L3_output_to_L2_input_bus,
-            southbound_bus=self.L3_output_to_L4_input_bus,
-            layer_name=f"{name}-L3-AgentModel"
-        )
-        self.executive_layer = ExecutiveFunctionLayer(
-            northbound_bus=self.L4_output_to_L3_input_bus,
-            southbound_bus=self.L4_output_to_L5_input_bus,
-            layer_name=f"{name}-L4-Executive"
-        )
-        self.cognitive_control_layer = CognitiveControlLayer(
-            northbound_bus=self.L5_output_to_L4_input_bus,
-            southbound_bus=self.L5_output_to_L6_input_bus,
-            layer_name=f"{name}-L5-CognitiveControl"
-        )
-        self.task_prosecution_layer = TaskProsecutionLayer(
-            northbound_bus=self.L6_output_to_L5_input_bus,
-            southbound_bus=self.L6_to_Environment_bus,
-            layer_name=f"{name}-L6-TaskProsecution"
-        )
-
-        # Initializing L1: It sends its constitutional goals southbound upon creation.
-        initial_goals_from_L1 = self.L1_output_to_L2_input_bus.get_messages()
-        print(f"Bot {self.name} init: L1 sent initial goals: {initial_goals_from_L1}")
-
-        # L2 processes these initial goals.
-        if initial_goals_from_L1:
-            self.strategy_layer.process_northbound(initial_goals_from_L1)
-            acks_from_L2 = self.L2_output_to_L1_input_bus.get_messages()
-            if acks_from_L2:
-                print(f"Bot {self.name} init: L1 processing acks from L2 for initial goals: {acks_from_L2}")
-                self.aspirational_layer.process_southbound(acks_from_L2)
-
-        initial_strategies_from_L2 = self.L2_output_to_L3_input_bus.get_messages()
-        if initial_strategies_from_L2:
-            print(f"Bot {self.name} init: L3 processing initial strategies from L2: {initial_strategies_from_L2}")
-            self.agent_model_layer.process_northbound(initial_strategies_from_L2)
-            initial_updates_from_L3 = self.L3_output_to_L2_input_bus.get_messages()
-            if initial_updates_from_L3:
-                print(f"Bot {self.name} init: L2 processing initial self-model updates from L3: {initial_updates_from_L3}")
-                self.strategy_layer.process_southbound(initial_updates_from_L3)
-            initial_tasks_from_L3 = self.L3_output_to_L4_input_bus.get_messages()
-            if initial_tasks_from_L3:
-                print(f"Bot {self.name} init: L4 processing initial tasks from L3: {initial_tasks_from_L3}")
-                self.executive_layer.process_northbound(initial_tasks_from_L3)
-                initial_updates_from_L4 = self.L4_output_to_L3_input_bus.get_messages()
-                if initial_updates_from_L4:
-                    print(f"Bot {self.name} init: L3 processing initial resource/risk updates from L4: {initial_updates_from_L4}")
-                    self.agent_model_layer.process_southbound(initial_updates_from_L4)
-                initial_plans_from_L4 = self.L4_output_to_L5_input_bus.get_messages()
-                if initial_plans_from_L4:
-                    print(f"Bot {self.name} init: L5 processing initial plans from L4: {initial_plans_from_L4}")
-                    self.cognitive_control_layer.process_northbound(initial_plans_from_L4)
-                    initial_updates_from_L5 = self.L5_output_to_L4_input_bus.get_messages()
-                    if initial_updates_from_L5:
-                        print(f"Bot {self.name} init: L4 processing initial status updates from L5: {initial_updates_from_L5}")
-                        self.executive_layer.process_southbound(initial_updates_from_L5)
-                    initial_task_for_L6 = self.L5_output_to_L6_input_bus.get_messages()
-                    if initial_task_for_L6:
-                        print(f"Bot {self.name} init: L6 processing initial task from L5: {initial_task_for_L6}")
-                        self.task_prosecution_layer.process_northbound(initial_task_for_L6)
-                        initial_status_from_L6 = self.L6_output_to_L5_input_bus.get_messages()
-                        if initial_status_from_L6:
-                            self.cognitive_control_layer.process_southbound(initial_status_from_L6)
-                        self.L6_to_Environment_bus.get_messages() # Clear L6->Env bus
-
-
-    def get_response(self, user_message: str) -> str:
-        print(f"\n--- Bot {self.name} responding to user message: '{user_message}' ---")
-
-        # 1. User message is given to GlobalStrategyLayer (L2) to update its environmental_context.
-        #    (This is a simplification; in a full system, it might go to L3/AgentModel first)
-        self.strategy_layer.environmental_context['current_conversation_topic'] = f"User query: {user_message[:50]}"
-        self.strategy_layer.environmental_context['user_sentiment'] = 'neutral' # Reset or detect sentiment
-        self.strategy_layer.environmental_context['session_history'].append({"user": user_message})
-        print(f"[{self.strategy_layer.layer_name}] Updated context with user message: '{user_message}'. Current topic: {self.strategy_layer.environmental_context['current_conversation_topic']}")
-
-        # 2. GlobalStrategyLayer (L2) sends a message northbound to AspirationalLayer (L1) for guidance.
-        #    L2 uses its 'northbound_bus' (L2_output_to_L1_input_bus) to send this message.
-        guidance_request_payload = {
-            'action': 'request_guidance', # Standardized to 'action' key
-            'user_message': user_message, # Pass the raw user message along
-            'current_context': self.strategy_layer.environmental_context.copy()
-        }
-        print(f"[{self.strategy_layer.layer_name}] Sending guidance request to L1: {guidance_request_payload}")
-        self.strategy_layer.send_northbound(guidance_request_payload)
-
-        # 3. AspirationalLayer (L1) processes this northbound message from L2.
-        #    Messages sent by L2 on L2_output_to_L1_input_bus are processed by L1's process_northbound.
-        #    (Correction: L1's process_NORTHBOUND is for messages from L2 if L2 is considered "below" L1 in that interaction,
-        #     or if L2 is sending a request that L1 processes as if it came from a lower layer.
-        #     The ACE standard is: Layer N sends South, N+1 receives North. Layer N+1 sends North, N receives South.
-        #     So, L2 sending North to L1 means L1's process_SOUTHBOUND should handle it.)
-
-        # Corrected flow for L2 -> L1 request:
-        # L2 sends on its northbound_bus (L2_output_to_L1_input_bus).
-        # L1 must *receive* messages from this bus. L1's process_southbound is for messages from L2.
-        messages_for_L1_from_L2 = self.L2_output_to_L1_input_bus.get_messages()
-        if messages_for_L1_from_L2:
-            print(f"[{self.aspirational_layer.layer_name}] Processing messages from L2 (requests): {messages_for_L1_from_L2}")
-            self.aspirational_layer.process_southbound(messages_for_L1_from_L2) # L1's process_southbound for L2's NB messages
-
-        # 4. AspirationalLayer (L1) sends goals/imperatives southbound.
-        #    L1 uses its 'southbound_bus' (L1_output_to_L2_input_bus) to send these.
-        goals_from_L1_for_L2 = self.L1_output_to_L2_input_bus.get_messages()
-        if goals_from_L1_for_L2:
-            print(f"[{self.aspirational_layer.layer_name}] Sent goals to L2: {goals_from_L1_for_L2}")
-            # 5. GlobalStrategyLayer (L2) processes these southbound messages from L1.
-            #    Messages sent by L1 on L1_output_to_L2_input_bus are processed by L2's process_northbound.
-            print(f"[{self.strategy_layer.layer_name}] Processing goals from L1: {goals_from_L1_for_L2}")
-            self.strategy_layer.process_northbound(goals_from_L1_for_L2)
-        else:
-            print(f"[{self.aspirational_layer.layer_name}] No new goals sent to L2.")
-
-
-        # After L2 processes goals from L1, it might send acknowledgements back to L1.
-        # These would be on L2_output_to_L1_input_bus, handled by L1.process_southbound in the next cycle if needed.
-        acks_from_L2_for_L1 = self.L2_output_to_L1_input_bus.get_messages()
-        if acks_from_L2_for_L1:
-            print(f"[{self.strategy_layer.layer_name}] Sent acks to L1: {acks_from_L2_for_L1}")
-            self.aspirational_layer.process_southbound(acks_from_L2_for_L1)
-
-
-        # 6. GlobalStrategyLayer (L2) has now (potentially) formulated strategies and sent them southbound.
-        #    These are on L2_output_to_L3_input_bus.
-        strategies_for_L3 = self.L2_output_to_L3_input_bus.get_messages() # Get strategies from L2
-
-        final_response_text = f"{self.name} (L6): No final output from L6." # Default if pipeline fails early
-
-        if strategies_for_L3:
-            print(f"[{self.agent_model_layer.layer_name}] Processing strategies from L2: {strategies_for_L3}")
-            self.agent_model_layer.process_northbound(strategies_for_L3) # L3 processes strategies
-
-            # L3 may send self-model updates/limitations northbound to L2.
-            updates_from_L3_for_L2 = self.L3_output_to_L2_input_bus.get_messages()
-            if updates_from_L3_for_L2:
-                print(f"[{self.strategy_layer.layer_name}] Processing self-model/status updates from L3: {updates_from_L3_for_L2}")
-                self.strategy_layer.process_southbound(updates_from_L3_for_L2)
-
-            # L3 sends (refined) plans/tasks southbound to L4.
-            tasks_for_L4 = self.L3_output_to_L4_input_bus.get_messages()
-            if tasks_for_L4:
-                print(f"[{self.executive_layer.layer_name}] Processing tasks from L3: {tasks_for_L4}")
-                self.executive_layer.process_northbound(tasks_for_L4) # L4 processes tasks
-
-                # L4 may send resource/risk updates northbound to L3.
-                updates_from_L4_for_L3 = self.L4_output_to_L3_input_bus.get_messages()
-                if updates_from_L4_for_L3:
-                    print(f"[{self.agent_model_layer.layer_name}] Processing resource/risk/status updates from L4: {updates_from_L4_for_L3}")
-                    self.agent_model_layer.process_southbound(updates_from_L4_for_L3)
-
-                # L4 sends detailed execution plans southbound to L5.
-                detailed_plans_for_L5 = self.L4_output_to_L5_input_bus.get_messages()
-                if detailed_plans_for_L5:
-                    print(f"[{self.cognitive_control_layer.layer_name}] Processing detailed plans from L4: {detailed_plans_for_L5}")
-                    self.cognitive_control_layer.process_northbound(detailed_plans_for_L5) # L5 processes plans
-
-                    # L5 may send status updates northbound to L4.
-                    updates_from_L5_for_L4 = self.L5_output_to_L4_input_bus.get_messages()
-                    if updates_from_L5_for_L4:
-                        print(f"[{self.executive_layer.layer_name}] Processing status updates from L5: {updates_from_L5_for_L4}")
-                        self.executive_layer.process_southbound(updates_from_L5_for_L4)
-
-                    # L5 selects a task and sends it southbound to L6.
-                    task_for_L6 = self.L5_output_to_L6_input_bus.get_messages()
-                    if task_for_L6:
-                        print(f"[{self.task_prosecution_layer.layer_name}] Processing task from L5: {task_for_L6}")
-                        self.task_prosecution_layer.process_northbound(task_for_L6) # L6 "executes"
-
-                        # L6 sends task completion status (including result) northbound to L5.
-                        status_from_L6_for_L5 = self.L6_output_to_L5_input_bus.get_messages()
-                        if status_from_L6_for_L5:
-                            print(f"[{self.cognitive_control_layer.layer_name}] Processing status from L6: {status_from_L6_for_L5}")
-                            self.cognitive_control_layer.process_southbound(status_from_L6_for_L5)
-
-                            # Capture the actual response text from L6's result
-                            last_l6_message = status_from_L6_for_L5[-1].payload
-                            if last_l6_message.get("status") == "success":
-                                final_response_text = str(last_l6_message.get("result", "L6: Success but no result text."))
-                            else:
-                                final_response_text = f"{self.name} (L6-Error): {last_l6_message.get('result', 'Processing error in L6.')}"
-                        else:
-                            final_response_text = f"{self.name} (L5): L6 did not report status."
-
-                        # Simulate further northbound propagation of status for this cycle
-                        updates_from_L5_for_L4_after_L6 = self.L5_output_to_L4_input_bus.get_messages()
-                        if updates_from_L5_for_L4_after_L6: self.executive_layer.process_southbound(updates_from_L5_for_L4_after_L6)
-                        updates_from_L4_for_L3_after_L5 = self.L4_output_to_L3_input_bus.get_messages()
-                        if updates_from_L4_for_L3_after_L5: self.agent_model_layer.process_southbound(updates_from_L4_for_L3_after_L5)
-                        updates_from_L3_for_L2_after_L4 = self.L3_output_to_L2_input_bus.get_messages()
-                        if updates_from_L3_for_L2_after_L4: self.strategy_layer.process_southbound(updates_from_L3_for_L2_after_L4)
-                        updates_from_L2_for_L1_after_L3 = self.L2_output_to_L1_input_bus.get_messages()
-                        if updates_from_L2_for_L1_after_L3: self.aspirational_layer.process_southbound(updates_from_L2_for_L1_after_L3)
-
-                        return final_response_text
-                    else: # No task from L5 to L6
-                        return f"{self.name} (L5): No task selected for L6."
-                else: # No detailed plans from L4 to L5
-                    return f"{self.name} (L4): No detailed execution plans generated for L5."
-            else: # No tasks from L3 to L4
-                 return f"{self.name} (L3): No tasks generated for L4."
-        else: # No strategies from L2 to L3
-             return f"{self.name} (L2): No strategies sent to L3 for '{user_message}'."
-
+# Bot class is removed as ChatApp will manage the ACE system directly.
 
 class ChatApp(App):
     def build(self):
-        self.bots = []
-        self.add_bot("Alpha")
-        self.add_bot("Beta")
+        self.bus_system = BusSystem()
+        self.layer_manager = LayerManager()
+        self.current_turn_number = 0
+
+        # Define Monitored Buses (using generic names for a single ACE system)
+        self.monitored_bus_ids = [
+            "USER_INPUT_BUS",
+            "L1_S_L2_N", "L2_N_L1_S", # L1-L2
+            "L2_S_L3_N", "L3_N_L2_S", # L2-L3
+            "L3_S_L4_N", "L4_N_L3_S", # L3-L4
+            "L4_S_L5_N", "L5_N_L4_S", # L4-L5
+            "L5_S_L6_N", "L6_N_L5_S", # L5-L6
+            "SYSTEM_OUTPUT_BUS"
+        ]
+        # Create all defined buses
+        for bus_id in self.monitored_bus_ids:
+            self.bus_system.create_bus(bus_id)
+
+        # Instantiate LLMInterface
+        self.llm_interface = LLMInterface()
+        if not self.llm_interface.client:
+            print("WARNING: LLMInterface client is not initialized. LLM-based agents may not function.")
+
+        # Instantiate and Add AgentBots
+        # Layer 1
+        l1_bot = L1_LLMSupervisorBot(
+            agent_id="L1_Supervisor_1",
+            bus_system=self.bus_system,
+            layer_manager=self.layer_manager,
+            llm_interface=self.llm_interface,
+            user_input_bus_id="USER_INPUT_BUS",
+            l1_l2_bus_id="L1_S_L2_N" # Southbound to L2
+        )
+        self.layer_manager.add_bot(l1_bot)
+
+        # Layer 2: LLMStrategyBot
+        l2_bot = L2_LLMStrategyBot(
+            agent_id="L2_Strategy_1",
+            bus_system=self.bus_system,
+            llm_interface=self.llm_interface,
+            input_bus_id="L1_S_L2_N",          # Northbound from L1
+            output_to_l3_bus_id="L2_S_L3_N",   # Southbound to L3
+            output_to_l1_bus_id="L2_N_L1_S"    # Northbound to L1 (for acks, status)
+        )
+        self.layer_manager.add_bot(l2_bot)
+
+        # Layer 3: LLMAgentModelBot
+        l3_bot = L3_LLMAgentModelBot(
+            agent_id="L3_AgentModel_1",
+            bus_system=self.bus_system,
+            llm_interface=self.llm_interface,
+            input_bus_id="L2_S_L3_N",          # Northbound from L2
+            output_to_l4_bus_id="L3_S_L4_N",   # Southbound to L4
+            output_to_l2_bus_id="L3_N_L2_S"    # Northbound to L2
+        )
+        self.layer_manager.add_bot(l3_bot)
+
+        # Layer 4: LLMExecutiveBot
+        l4_bot = L4_LLMExecutiveBot(
+            agent_id="L4_Executive_1",
+            bus_system=self.bus_system,
+            llm_interface=self.llm_interface,
+            input_bus_id="L3_S_L4_N",          # Northbound from L3
+            output_to_l5_bus_id="L4_S_L5_N",   # Southbound to L5
+            output_to_l3_bus_id="L4_N_L3_S"    # Northbound to L3
+        )
+        self.layer_manager.add_bot(l4_bot)
+
+        # Layer 5: LLMCognitiveControlBot
+        l5_bot = L5_LLMCognitiveControlBot(
+            agent_id="L5_CognitiveControl_1",
+            bus_system=self.bus_system,
+            llm_interface=self.llm_interface,
+            input_bus_id="L4_S_L5_N",          # Northbound from L4
+            output_to_l6_bus_id="L5_S_L6_N",   # Southbound to L6
+            output_to_l4_bus_id="L5_N_L4_S"    # Northbound to L4
+        )
+        self.layer_manager.add_bot(l5_bot)
+
+        # Layer 6: L6_LLMOutputBot
+        l6_bot = L6_LLMOutputBot( # Ensure this class name matches the one in agent_system.py
+            agent_id="L6_Output_1",
+            bus_system=self.bus_system,
+            llm_interface=self.llm_interface,
+            l5_l6_bus_id="L5_S_L6_N",
+            system_output_bus_id="SYSTEM_OUTPUT_BUS"
+        )
+        self.layer_manager.add_bot(l6_bot)
+
+        self.turn_scheduler = TurnScheduler(layer_manager=self.layer_manager, bus_system=self.bus_system)
+
         self.root_widget = RootWidget()
+
+        Clock.schedule_interval(self.run_ace_turn, 1.0) # Run ACE tick every 1 second
+        Clock.schedule_interval(self.update_ui_elements, 0.2) # Update UI every 0.2 seconds
+
+        self.update_ui_elements() # Initial UI population
         return self.root_widget
 
-    def add_bot(self, name: str):
-        bot = Bot(name)
-        self.bots.append(bot)
+    def run_ace_turn(self, dt=None):
+        self.turn_scheduler.tick(self.current_turn_number)
+        self.current_turn_number += 1
+        # self.update_ui_elements() # UI is updated by its own clock schedule
+
+    def update_ui_elements(self, dt=None):
+        if not hasattr(self, 'root_widget') or self.root_widget is None:
+            return
+
+        # Update Layer Panels
+        for i in range(1, 7):
+            layer_bots_label = getattr(self.root_widget.ids, f'layer_{i}_bots_label', None)
+            if layer_bots_label:
+                bots_in_layer = self.layer_manager.get_bots_in_layer(i)
+                if bots_in_layer:
+                    bot_details = [f"- {escape_markup(b.agent_id)} ({escape_markup(b.role)})" for b in bots_in_layer]
+                    layer_bots_label.text = "\n".join(bot_details)
+                else:
+                    layer_bots_label.text = f"L{i} Bots: (No agents)"
+
+        # Update Bus Content Display
+        bus_texts = []
+        # Ensure all monitored buses are created if not already (though they should be in build)
+        for bus_id in self.monitored_bus_ids:
+            self.bus_system.create_bus(bus_id) # Safe call: returns existing if already there
+
+        for bus_id in self.monitored_bus_ids:
+            bus = self.bus_system.get_bus(bus_id)
+            if bus:
+                messages = bus.peek_messages()
+                bus_texts.append(f"[b]{escape_markup(bus_id)}[/b] ({len(messages)} msgs):")
+                if messages:
+                    for msg in messages[-3:]: # Show last 3 messages
+                        payload_preview = str(msg.payload)[:60] + "..." if len(str(msg.payload)) > 60 else str(msg.payload)
+                        bus_texts.append(f"  - Src: {escape_markup(msg.source_id)}, Payload: {escape_markup(payload_preview)}")
+                else:
+                    bus_texts.append("  (empty)")
+            else:
+                bus_texts.append(f"[b]{escape_markup(bus_id)}[/b]: (Not found!)")
+
+        if self.root_widget.ids.bus_content_label:
+            self.root_widget.ids.bus_content_label.text = "\n".join(bus_texts)
+
+        # Update Chat History from SYSTEM_OUTPUT_BUS
+        system_output_bus = self.bus_system.get_bus("SYSTEM_OUTPUT_BUS")
+        if system_output_bus:
+            output_messages = system_output_bus.get_messages() # Consume messages
+            for msg in output_messages:
+                if 'text' in msg.payload:
+                    # For a single ACE system, the bot name can be generic or app name
+                    self.root_widget.ids.chat_history_label.text += f"System: {escape_markup(msg.payload['text'])}\n"
+
+        # Display memory for L1_Supervisor_1
+        if self.root_widget.ids.get('bot_memory_label'):
+            supervisor_bot_id = "L1_Supervisor_1"
+            l1_bots = self.layer_manager.get_bots_in_layer(1)
+            supervisor_bot = next((bot for bot in l1_bots if bot.agent_id == supervisor_bot_id), None)
+
+            if supervisor_bot:
+                memory_text = f"Memory of {escape_markup(supervisor_bot.agent_id)} (last 10):\n"
+                formatted_entries = []
+                # Display last 10 memory entries
+                for entry_idx, entry_item in enumerate(list(supervisor_bot.memory)[-10:]):
+                    entry_str = str(entry_item) # Ensure it's a string
+                    prefix = "  "
+                    if "LLM_PROMPT_USER:" in entry_str:
+                        prefix = "  [PROMPT] "
+                        entry_str = entry_str.replace("LLM_PROMPT_USER:", "").strip()
+                    elif "LLM_RESPONSE_RAW:" in entry_str:
+                        prefix = "  [LLM RAW] "
+                        entry_str = entry_str.replace("LLM_RESPONSE_RAW:", "").strip()
+                    elif "LLM_RESPONSE_PARSED:" in entry_str:
+                        prefix = "  [LLM PARSED] "
+                        entry_str = entry_str.replace("LLM_RESPONSE_PARSED:", "").strip()
+                    elif "ACTION:" in entry_str: # Generic action keyword
+                        prefix = "  [ACTION] "
+                        entry_str = entry_str.replace("ACTION:", "").strip()
+                    elif "T" == entry_str.strip()[:1] and ":" in entry_str.split(" ")[0]: # Heuristic for Turn logs
+                        parts = entry_str.split(":", 1)
+                        prefix = f"  [{parts[0].strip()}] "
+                        entry_str = parts[1].strip() if len(parts) > 1 else ""
+
+                    # Truncate long entries for display
+                    entry_display = (entry_str[:70] + '...') if len(entry_str) > 70 else entry_str
+                    formatted_entries.append(f"{prefix}{escape_markup(entry_display)}")
+
+                memory_text += "\n".join(formatted_entries)
+                self.root_widget.ids.bot_memory_label.text = memory_text
+            else:
+                self.root_widget.ids.bot_memory_label.text = f"{supervisor_bot_id} not found in Layer 1."
+
 
     def send_message(self, message_text):
         if message_text.strip():
-            chat_history = self.root_widget.ids.chat_history
-            chat_history.text += f"You: {message_text}\n"
-            for bot in self.bots:
-                response = bot.get_response(message_text) # This now involves ACE
-                chat_history.text += f"{response}\n" # Bot name is part of the response now
+            self.root_widget.ids.chat_history_label.text += f"You: {escape_markup(message_text)}\n"
             self.root_widget.ids.message_input.text = ""
+
+            user_msg_payload = {'type': 'user_utterance', 'text': message_text}
+            msg_obj = Message(source_id='user_gui', payload=user_msg_payload, target_bus_id="USER_INPUT_BUS")
+
+            self.bus_system.publish_to_bus("USER_INPUT_BUS", msg_obj)
+
+            # Optional: Force an immediate (partial) run & UI update if clock is too slow for perceived responsiveness
+            # self.run_ace_turn()
+            # self.update_ui_elements()
+
 
 class RootWidget(BoxLayout):
     pass

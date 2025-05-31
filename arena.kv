@@ -1,30 +1,201 @@
 #:kivy 1.0.9
 
 <RootWidget>:
-    orientation: 'vertical'
+    orientation: 'horizontal' # Main layout is now horizontal
+
+    # Left Side: Chat Interface
     BoxLayout:
-        size_hint_y: None
-        height: "40dp"
-        Label:
-            text: "Chat Arena"
-    ScrollView:
-        Label:
-            id: chat_history
+        orientation: 'vertical'
+        size_hint_x: 0.6 # Chat takes 60% of width
+
+        Label: # Title for chat section (optional)
+            text: "Chat Interface"
             size_hint_y: None
-            height: self.texture_size[1]
-            text_size: self.width, None
-            padding: 10, 10
-            text: ""
-    BoxLayout:
-        size_hint_y: None
-        height: "40dp"
-        TextInput:
-            id: message_input
-            hint_text: "Enter your message..."
-            multiline: False
-            on_text_validate: app.send_message(self.text)
-        Button:
-            text: "Send"
-            size_hint_x: None
-            width: "70dp"
-            on_press: app.send_message(message_input.text)
+            height: "30dp"
+
+        ScrollView:
+            Label:
+                id: chat_history_label # Renamed for clarity
+                size_hint_y: None
+                height: self.texture_size[1]
+                text_size: self.width, None
+                padding: 10, 10
+                text: "Chat history will appear here...\n"
+                markup: True # To allow simple formatting if needed
+
+        BoxLayout:
+            size_hint_y: None
+            height: "40dp"
+            TextInput:
+                id: message_input
+                hint_text: "Enter your message..."
+                multiline: False
+                on_text_validate: app.send_message(self.text)
+            Button:
+                id: send_button # Added ID for send button
+                text: "Send"
+                size_hint_x: None
+                width: "70dp"
+                on_press: app.send_message(message_input.text)
+
+    # Right Side: ACE System State
+    ScrollView:
+        size_hint_x: 0.4 # ACE State takes 40% of width
+        bar_width: 10
+        BoxLayout:
+            id: ace_display_layout
+            orientation: 'vertical'
+            size_hint_y: None
+            height: self.minimum_height
+            padding: 10
+            spacing: 10
+
+            Label:
+                text: "ACE System State"
+                size_hint_y: None
+                height: "30dp"
+                font_size: '18sp'
+                bold: True
+
+            # Bus Content Display
+            Label:
+                text: "Key Bus Messages:"
+                size_hint_y: None
+                height: "20dp"
+                halign: 'left'
+                text_size: self.width, None
+            ScrollView: # ScrollView for bus content
+                size_hint_y: None
+                height: "150dp" # Fixed height for bus content display area
+                Label:
+                    id: bus_content_label
+                    text: "Bus messages will appear here..."
+                    size_hint_y: None
+                    height: self.texture_size[1]
+                    text_size: self.width * 0.95, None # Adjusted for padding
+                    padding: 5, 5
+                    markup: True
+
+            # Per-Layer Bot Panels
+            Label:
+                text: "Agent Layers:"
+                size_hint_y: None
+                height: "20dp"
+                halign: 'left'
+                text_size: self.width, None
+
+            BoxLayout: # Layer 1
+                orientation: 'vertical'
+                size_hint_y: None
+                height: self.minimum_height
+                Label:
+                    text: "Layer 1: Input/Aspirational"
+                    size_hint_y: None
+                    height: "20dp"
+                    bold: True
+                Label:
+                    id: layer_1_bots_label
+                    text: "L1 Bots: (details pending)"
+                    size_hint_y: None
+                    height: self.texture_size[1]
+                    text_size: self.width, None
+
+            # Bot Memory Display (Simple - for one bot)
+            Label:
+                text: "Selected Bot Memory:"
+                size_hint_y: None
+                height: "20dp"
+                halign: 'left'
+                text_size: self.width, None
+                bold: True
+            ScrollView:
+                size_hint_y: None
+                height: "100dp" # Fixed height for memory display
+                Label:
+                    id: bot_memory_label
+                    text: "Memory of selected bot will appear here..."
+                    size_hint_y: None
+                    height: self.texture_size[1]
+                    text_size: self.width * 0.95, None
+                    padding: 5,5
+                    markup: True
+
+            BoxLayout: # Layer 2
+                orientation: 'vertical'
+                size_hint_y: None
+                height: self.minimum_height
+                Label:
+                    text: "Layer 2: Strategy"
+                    size_hint_y: None
+                    height: "20dp"
+                    bold: True
+                Label:
+                    id: layer_2_bots_label
+                    text: "L2 Bots: (details pending)"
+                    size_hint_y: None
+                    height: self.texture_size[1]
+                    text_size: self.width, None
+
+            BoxLayout: # Layer 3
+                orientation: 'vertical'
+                size_hint_y: None
+                height: self.minimum_height
+                Label:
+                    text: "Layer 3: Agent Model"
+                    size_hint_y: None
+                    height: "20dp"
+                    bold: True
+                Label:
+                    id: layer_3_bots_label
+                    text: "L3 Bots: (details pending)"
+                    size_hint_y: None
+                    height: self.texture_size[1]
+                    text_size: self.width, None
+
+            BoxLayout: # Layer 4
+                orientation: 'vertical'
+                size_hint_y: None
+                height: self.minimum_height
+                Label:
+                    text: "Layer 4: Executive Function"
+                    size_hint_y: None
+                    height: "20dp"
+                    bold: True
+                Label:
+                    id: layer_4_bots_label
+                    text: "L4 Bots: (details pending)"
+                    size_hint_y: None
+                    height: self.texture_size[1]
+                    text_size: self.width, None
+
+            BoxLayout: # Layer 5
+                orientation: 'vertical'
+                size_hint_y: None
+                height: self.minimum_height
+                Label:
+                    text: "Layer 5: Cognitive Control"
+                    size_hint_y: None
+                    height: "20dp"
+                    bold: True
+                Label:
+                    id: layer_5_bots_label
+                    text: "L5 Bots: (details pending)"
+                    size_hint_y: None
+                    height: self.texture_size[1]
+                    text_size: self.width, None
+
+            BoxLayout: # Layer 6
+                orientation: 'vertical'
+                size_hint_y: None
+                height: self.minimum_height
+                Label:
+                    text: "Layer 6: Task Prosecution/Output"
+                    size_hint_y: None
+                    height: "20dp"
+                    bold: True
+                Label:
+                    id: layer_6_bots_label
+                    text: "L6 Bots: (details pending)"
+                    size_hint_y: None
+                    height: self.texture_size[1]
+                    text_size: self.width, None
