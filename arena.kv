@@ -1,0 +1,30 @@
+#:kivy 1.0.9
+
+<RootWidget>:
+    orientation: 'vertical'
+    BoxLayout:
+        size_hint_y: None
+        height: "40dp"
+        Label:
+            text: "Chat Arena"
+    ScrollView:
+        Label:
+            id: chat_history
+            size_hint_y: None
+            height: self.texture_size[1]
+            text_size: self.width, None
+            padding: 10, 10
+            text: ""
+    BoxLayout:
+        size_hint_y: None
+        height: "40dp"
+        TextInput:
+            id: message_input
+            hint_text: "Enter your message..."
+            multiline: False
+            on_text_validate: app.send_message(self.text)
+        Button:
+            text: "Send"
+            size_hint_x: None
+            width: "70dp"
+            on_press: app.send_message(message_input.text)
