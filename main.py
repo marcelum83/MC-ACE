@@ -178,8 +178,9 @@ class ChatApp(App):
             else:
                 bus_texts.append(f"[b]{escape_markup(bus_id)}[/b]: (Not found!)")
 
-        if self.root_widget.ids.bus_content_label:
-            self.root_widget.ids.bus_content_label.text = "\n".join(bus_texts)
+        bus_label = self.root_widget.ids.get('bus_content_label')
+        if bus_label:
+            bus_label.text = "\n".join(bus_texts)
 
         # Update Chat History from SYSTEM_OUTPUT_BUS
         system_output_bus = self.bus_system.get_bus("SYSTEM_OUTPUT_BUS")
@@ -187,11 +188,13 @@ class ChatApp(App):
             output_messages = system_output_bus.get_messages() # Consume messages
             for msg in output_messages:
                 if 'text' in msg.payload:
-                    # For a single ACE system, the bot name can be generic or app name
-                    self.root_widget.ids.chat_history_label.text += f"System: {escape_markup(msg.payload['text'])}\n"
+                    chat_history = self.root_widget.ids.get('chat_history_label')
+                    if chat_history:
+                        chat_history.text += f"System: {escape_markup(msg.payload['text'])}\n"
 
         # Display memory for L1_Supervisor_1
-        if self.root_widget.ids.get('bot_memory_label'):
+        bot_memory_widget = self.root_widget.ids.get('bot_memory_label')
+        if bot_memory_widget:
             supervisor_bot_id = "L1_Supervisor_1"
             l1_bots = self.layer_manager.get_bots_in_layer(1)
             supervisor_bot = next((bot for bot in l1_bots if bot.agent_id == supervisor_bot_id), None)
@@ -225,15 +228,19 @@ class ChatApp(App):
                     formatted_entries.append(f"{prefix}{escape_markup(entry_display)}")
 
                 memory_text += "\n".join(formatted_entries)
-                self.root_widget.ids.bot_memory_label.text = memory_text
+                bot_memory_widget.text = memory_text
             else:
-                self.root_widget.ids.bot_memory_label.text = f"{supervisor_bot_id} not found in Layer 1."
+                bot_memory_widget.text = f"{supervisor_bot_id} not found in Layer 1."
 
 
     def send_message(self, message_text):
         if message_text.strip():
-            self.root_widget.ids.chat_history_label.text += f"You: {escape_markup(message_text)}\n"
-            self.root_widget.ids.message_input.text = ""
+            chat_history = self.root_widget.ids.get('chat_history_label')
+            if chat_history:
+                chat_history.text += f"You: {escape_markup(message_text)}\n"
+            message_input_widget = self.root_widget.ids.get('message_input')
+            if message_input_widget:
+                message_input_widget.text = ""
 
             user_msg_payload = {'type': 'user_utterance', 'text': message_text}
             msg_obj = Message(source_id='user_gui', payload=user_msg_payload, target_bus_id="USER_INPUT_BUS")
