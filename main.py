@@ -160,9 +160,6 @@ class ChatApp(App):
 
         # Update Bus Content Display
         bus_texts = []
-        # Ensure all monitored buses are created if not already (though they should be in build)
-        for bus_id in self.monitored_bus_ids:
-            self.bus_system.create_bus(bus_id) # Safe call: returns existing if already there
 
         for bus_id in self.monitored_bus_ids:
             bus = self.bus_system.get_bus(bus_id)
