@@ -44,8 +44,23 @@ class ChatApp(App):
 
         # Instantiate LLMInterface
         self.llm_interface = LLMInterface()
-        if not self.llm_interface.client:
-            print("WARNING: LLMInterface client is not initialized. LLM-based agents may not function.")
+        if self.llm_interface.client is None:
+            print("-" * 60)
+            print("WARNING: LLMInterface client is not initialized.")
+            print("The LLM-powered agents will not function correctly.")
+            print("Please ensure OPENAI_API_KEY and OPENAI_BASE_URL environment variables are set.")
+            print("If using a non-OpenAI provider with an OpenAI-compatible API,")
+            print("ensure OPENAI_BASE_URL points to the correct endpoint.")
+            print("Example for Google's Gemini (if you have access and a key):")
+            print("  OPENAI_API_KEY='your_google_api_key_for_gemini'")
+            print("  OPENAI_BASE_URL='https://generativelanguage.googleapis.com/v1beta'")
+            print("  (Note: The model name in llm_interface.py might also need adjustment, e.g., 'gemini-1.0-pro-latest')")
+            print("-" * 60)
+        else:
+            print("-" * 60)
+            print("INFO: LLMInterface client initialized successfully.")
+            print(f"INFO: Using LLM Base URL: {self.llm_interface.base_url}")
+            print("-" * 60)
 
         # Instantiate and Add AgentBots
         # Layer 1
@@ -120,7 +135,7 @@ class ChatApp(App):
         Clock.schedule_interval(self.run_ace_turn, 1.0) # Run ACE tick every 1 second
         Clock.schedule_interval(self.update_ui_elements, 0.2) # Update UI every 0.2 seconds
 
-        self.update_ui_elements() # Initial UI population
+        Clock.schedule_once(self.update_ui_elements, 0) # Initial UI population on next frame
         return self.root_widget
 
     def run_ace_turn(self, dt=None):

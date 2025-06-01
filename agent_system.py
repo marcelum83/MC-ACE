@@ -3,6 +3,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Any, Deque, Dict, List, Optional
 import json
+import logging # Added for logging
 
 from llm_interface import LLMInterface
 
@@ -27,14 +28,19 @@ class BusSystem:
     def __init__(self): self._buses: Dict[str, Bus] = {}
     def create_bus(self, bus_id: str) -> Bus:
         if bus_id in self._buses:
-            print(f"Warning: Bus ID '{bus_id}' already exists. Returning existing bus.")
+            logging.warning(f"Bus ID '{bus_id}' already exists. Returning existing bus.")
             return self._buses[bus_id]
-        bus = Bus(bus_id); self._buses[bus_id] = bus; return bus
+        else:
+            logging.info(f"Creating new Bus: '{bus_id}'")
+            bus = Bus(bus_id=bus_id) # Pass bus_id to Bus constructor
+            self._buses[bus_id] = bus
+            return bus
     def get_bus(self, bus_id: str) -> Optional[Bus]: return self._buses.get(bus_id)
     def publish_to_bus(self, bus_id: str, message: Message):
         bus = self.get_bus(bus_id)
         if bus: bus.publish(message)
-        else: print(f"Error: Bus ID '{bus_id}' not found for message from {message.source_id}.")
+        # Made the error message here a logging.error as well for consistency
+        else: logging.error(f"Bus ID '{bus_id}' not found for message from {message.source_id}.")
     def __repr__(self): return f"<BusSystem buses={list(self._buses.keys())}>"
 
 class AgentBot(ABC):
